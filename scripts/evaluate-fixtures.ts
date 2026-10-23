@@ -974,6 +974,33 @@ const modelTestConsistency = (
 	return consistencyByTest;
 };
 
+type PooledConsistency = {
+	severity: Consistency;
+	confidence: Consistency;
+};
+
+// Sums the per-patch agreement and pair counts for one model and mode, so a
+// configuration's stability can be read as a single figure. Pair counts add
+// across patches, so the pooled share is a weighted mean of the per-patch
+// shares rather than a mean of percentages.
+const modelPooledConsistency = (
+	model: ModelResult,
+	mode: Mode,
+): PooledConsistency => {
+	const pooled: PooledConsistency = {
+		severity: emptyConsistency(),
+		confidence: emptyConsistency(),
+	};
+	for (const consistency of modelTestConsistency(model, mode).values()) {
+		for (const label of ["severity", "confidence"] as const) {
+			pooled[label].observations += consistency[label].observations;
+			pooled[label].pairs += consistency[label].pairs;
+			pooled[label].agreements += consistency[label].agreements;
+		}
+	}
+	return pooled;
+};
+
 type PairOutcome = { win: number; tie: number; loss: number };
 
 const pairedOutcomes = (model: ModelResult): PairOutcome => {
@@ -1496,6 +1523,31 @@ const buildSummary = (
 			"the number of compared run pairs. Purposes that were not reported in both runs " +
 			"are excluded from that label's comparisons.",
 	);
+	lines.push("");
+	lines.push(
+		"The first table pools those comparisons across every patch for a model and " +
+			"mode, so a configuration's stability can be read as one figure. The second " +
+			"breaks the same comparisons down per patch. Pair counts add across patches, " +
+			"so the pooled share is a weighted mean of the per-patch shares.",
+	);
+	lines.push("");
+	lines.push(
+		"| Model | Mode | Severity agreement (pairs) | Confidence agreement (pairs) |",
+	);
+	lines.push(
+		"| ----- | ---- | ------------------------- | ---------------------------- |",
+	);
+	for (const model of models) {
+		for (const mode of modes) {
+			const pooled = modelPooledConsistency(model, mode);
+			if (pooled.severity.pairs === 0 && pooled.confidence.pairs === 0) {
+				continue;
+			}
+			lines.push(
+				`| ${model.model} | ${mode} | ${formatConsistency(pooled.severity)} | ${formatConsistency(pooled.confidence)} |`,
+			);
+		}
+	}
 	lines.push("");
 	lines.push(
 		"| Model | Mode | Test | Severity agreement (pairs) | Confidence agreement (pairs) |",
